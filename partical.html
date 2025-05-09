@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insane Interactive Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+      body {
+    margin: 0;
+    overflow: hidden; /* Prevent scrollbars */
+    background-color: #000; /* Black background */
+}
+
+canvas {
+    display: block; /* Remove potential extra space below canvas */
+}
+    </style>
+</head>
+<body>
+    <canvas id="visualizerCanvas"></canvas>
+    <script src="script.js"></script>
+    <script type="text/javascript" charset="utf-8">
+      const canvas = document.getElementById('visualizerCanvas');
+const ctx = canvas.getContext('2d');
+
+let width = canvas.width = window.innerWidth;
+let height = canvas.height = window.innerHeight;
+
+let particles = [];
+let mouse = { x: null, y: null, radius: 100 }; // Mouse interaction radius
+let hue = 0; // For color cycling
+
+// --- Event Listeners ---
+window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+});
+
+window.addEventListener('mousemove', (event) => {
+    mouse.x = event.clientX;
+    mouse.y = event.clientY;
+    // Spawn particles more frequently on move
+    for (let i = 0; i < 5; i++) {
+         particles.push(new Particle(mouse.x, mouse.y));
+    }
+});
+
+window.addEventListener('mouseout', () => {
+    mouse.x = null;
+    mouse.y = null;
+});
+
+// Optional: Click interaction
+window.addEventListener('click', () => {
+    // Create a burst of particles on click
+    for (let i = 0; i < 50; i++) {
+         particles.push(new Particle(mouse.x, mouse.y, true)); // 'true' indicates burst
+    }
+});
+
+
+// --- Particle Class ---
+class Particle {
+    constructor(x, y, isBurst = false) {
+        this.x = x;
+        this.y = y;
+        this.baseSize = Math.random() * 15 + 5; // Base size
+        this.size = this.baseSize;
+        this.initialLife = Math.random() * 60 + 60; // Frames lifespan (1-2 seconds)
+        this.life = this.initialLife;
+
+        // Velocity
+        if (isBurst) {
+            // Burst particles fly outwards radially
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 10 + 2;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+        } else {
+            // Normal particles have smaller random velocity
+            this.vx = Math.random() * 4 - 2; // -2 to +2
+            this.vy = Math.random() * 4 - 2; // -2 to +2
+        }
+
+        // Color - Use cycling HSL for vibrant colors
+        this.color = `hsl(${hue + Math.random() * 50 - 25}, 100%, 50%)`; // Add some randomness around the base hue
+
+        // Shape
+        this.shape = Math.random() > 0.5 ? 'circle' : 'square';
+
+        // Effects
+        this.gravity = 0.05; // Slight downward pull
+        this.friction = 0.98; // Slow down over time
+        this.opacity = 1;
+        this.rotation = 0;
+        this.rotationSpeed = Math.random() * 0.2 - 0.1; // Random rotation speed
+    }
+
+    update() {
+        // Physics
+        this.vy += this.gravity;
+        this.vx *= this.friction;
+        this.vy *= this.friction;
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Life & Fading
+        this.life--;
+        this.opacity = this.life / this.initialLife; // Fade out smoothly
+
+        // Pulsing size (optional)
+        this.size = this.baseSize * (0.5 + Math.abs(Math.sin(this.life * 0.1)) * 0.5); // Pulse effect
+
+        // Rotation
+        this.rotation += this.rotationSpeed;
+
+        // Mouse Interaction (Repulsion)
+        if (mouse.x !== null) {
+            const dx = this.x - mouse.x;
+            const dy = this.y - mouse.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const forceDirectionX = dx / distance;
+            const forceDirectionY = dy / distance;
+            const maxDistance = mouse.radius;
+            // Force is stronger closer to the mouse
+            const force = (maxDistance - distance) / maxDistance;
+            const directionX = forceDirectionX * force * 2; // Adjust multiplier for strength
+            const directionY = forceDirectionY * force * 2;
+
+            if (distance < maxDistance) {
+                this.vx += directionX;
+                this.vy += directionY;
+            }
+        }
+
+        // Edge Handling (Bounce) - optional, can let them fly off
+        /*
+        if (this.x + this.size > width || this.x - this.size < 0) {
+            this.vx *= -0.8; // Reverse direction and lose some energy
+            this.x = Math.max(this.size, Math.min(width - this.size, this.x)); // Prevent sticking
+        }
+        if (this.y + this.size > height || this.y - this.size < 0) {
+            this.vy *= -0.8;
+             this.y = Math.max(this.size, Math.min(height - this.size, this.y)); // Prevent sticking
+        }
+        */
+    }
+
+    draw() {
+        ctx.save(); // Save context state for rotation/opacity
+        ctx.globalAlpha = Math.max(0, this.opacity); // Ensure alpha doesn't go negative
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; // Optional whiteish stroke
+        ctx.lineWidth = 1;
+
+        // Translate and rotate for square drawing
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+
+        ctx.beginPath();
+        if (this.shape === 'circle') {
+            ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+        } else { // Square
+            ctx.rect(-this.size / 2, -this.size / 2, this.size, this.size);
+        }
+        ctx.closePath();
+
+        ctx.fill();
+        // ctx.stroke(); // Uncomment for stroke effect
+
+        ctx.restore(); // Restore context state
+    }
+}
+
+// --- Animation Loop ---
+function animate() {
+    // 1. Clear Canvas (with trail effect)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; // Semi-transparent black for trails
+    ctx.fillRect(0, 0, width, height);
+    // ctx.clearRect(0, 0, width, height); // Use this for no trails
+
+    // 2. Update and Draw Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+
+        // 3. Remove Dead Particles
+        if (particles[i].life <= 0 || particles[i].opacity <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    // 4. Update Global Hue for color cycling
+    hue = (hue + 0.5) % 360; // Cycle through hues
+
+    // Optional: Limit particle count for performance
+    // while (particles.length > 500) {
+    //     particles.shift(); // Remove the oldest particle
+    // }
+
+    // 5. Request Next Frame
+    requestAnimationFrame(animate);
+}
+
+// --- Start ---
+// Initial burst (optional)
+for (let i = 0; i < 50; i++) {
+    particles.push(new Particle(width / 2, height / 2, true));
+}
+animate(); // Start the animation loop
+    </script>
+</body>
+</html>
